@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Chat Page</title>
+</head>
+<body>
+    <center><h1>Hello, Welcome to my chat site! {{ request.user.username }}</h1></center>
+    <br>
+    {% if request.user.is_authenticated %}
+        <center>Logout the chat Page <a href="{% url 'logout-user' %}">Logout</a></center>
+    {% endif %}
+    <div class="chat__item__container" id="id_chat_item_container" style="font-size: 20px">
+        <br />
+        <input type="text" id="id_recipient_input" placeholder="Recipient's username" list="user-suggestions"/>
+        <datalist id="user-suggestions"></datalist>
+        <input type="text" id="id_message_send_input" placeholder="Your message" />
+        <button type="submit" id="id_message_send_button">Send Message</button>
+        <br /><br />
+    </div>
+
+    <div id="chat-messages">
+        {% for message in messages %}
+            <div data-message-id="{{ message.id }}">
+                <strong>{{ message.sender.username }}</strong> to <strong>{{ message.recipient.username }}</strong>: {{ message.content }}
+                <small>({{ message.timestamp }})</small>
+            </div>
+        {% endfor %}
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const chatSocket = new WebSocket("ws://" + window.location.host + "/ws/chat/");
+            const recipientInput = document.querySelector("#id_recipient_input");
+            const userSuggestions = document.querySelector("#user-suggestions");
+
+            chatSocket.onopen = function(e) {
+                console.log("The connection was setup successfully!");
+            };
+
+            chatSocket.onclose = function(e) {
+                console.log("WebSocket connection closed unexpectedly.", e.reason);
+            };
+            chatSocket.onerror = function(e) {
+    console.error("WebSocket error:", e.message);
+};
+
+            recipientInput.addEventListener('input', function() {
+                fetch('/user_list/?term=' + recipientInput.value, {
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    userSuggestions.innerHTML = '';
+                    data.forEach(function(user) {
+                        const option = document.createElement('option');
+                        option.value = user;
+                        userSuggestions.appendChild(option);
+                    });
+                })
+                .catch(error => console.error('Error fetching user list:', error));
+            });
+
+            document.querySelector("#id_message_send_input").focus();
+
+            document.querySelector("#id_message_send_input").onkeyup = function(e) {
+                if (e.keyCode === 13) {
+                    document.querySelector("#id_message_send_button").click();
+                }
+            };
+
+            document.querySelector("#id_message_send_button").onclick = function(e) {
+                var messageInput = document.querySelector("#id_message_send_input").value;
+                var recipientInput = document.querySelector("#id_recipient_input").value;
+                if (messageInput.trim() !== "" && recipientInput.trim() !== "") {
+                    chatSocket.send(JSON.stringify({
+                        action: 'send',
+                        message: messageInput,
+                        username: "{{ request.user.username }}",
+                        recipient: recipientInput
+                    }));
+                }
+            };
+
+            chatSocket.onmessage = function(e) {
+                const data = JSON.parse(e.data);
+                if (data.action === 'message') {
+                    var div = document.createElement("div");
+                    div.dataset.messageId = data.message_id;
+                    div.innerHTML = `${data.username} to ${data.recipient}: ${data.message} (${data.timestamp})`;
+                    document.querySelector("#id_message_send_input").value = "";
+                    document.querySelector("#id_recipient_input").value = "";
+                    document.querySelector("#id_chat_item_container").appendChild(div);
+                }
+            };
+        });
+    </script>
+</body>
+</html>
